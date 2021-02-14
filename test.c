@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <assert.h> 
+#include <stdio.h>
 #include "thread.h"
 #include "pool.h"
 
@@ -30,12 +31,13 @@ int test_pool(void) {
 }
 
 
-int count = 0;
+int count1 = 0;
+int count2 = 0;
 
 void foobar(void* x) { 
   long ii = (long)x;
   while(ii--) { 
-    count++;
+    count1++;
     yield();
   }
   return;
@@ -43,18 +45,18 @@ void foobar(void* x) {
 void barbaz(void* x) { 
   long ii = (long)x;
   while(ii--) {
-    count++;
+    count2++;
     yield();
   }
   return;
 }
 
 int test_threads(void){
-  init_threads();
-  Thread t1 = create_thread(&foobar, (void*)10, 0x100);
-  Thread t2 = create_thread(&barbaz, (void*)20, 0x100);
+  Thread t2 = create_thread(&barbaz, (void*)25, 0x100);
+  Thread t1 = create_thread(&foobar, (void*)25, 0x100);
   wait_threads();
-  assert(count == 30);
+  printf("%d %d\n", count1, count2);
+  assert(count1 == count2);
   return 0;
 }
 

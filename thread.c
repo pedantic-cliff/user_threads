@@ -14,70 +14,83 @@ typedef struct thread {
   void (*func)(void *);
   void *  arg;
 
+  int   isDone;
+
 } thread_t; 
 
 struct { 
   Pool p;
-} threads;
+} threads = {NULL};
 
 thread_t *CurrentThread;
 thread_t idle_thread;
 
-Context _setup_context(void *stack, void *addr);
-Context _swap_context(Context);
-void _enter_context(Context);
-int run_thread(Context ctxt);
+extern Context _setup_context(void *stack, void *addr);
+extern Context _swap_context(Context);
+extern Context _enter_context(Context);
 
-void setup_thread(Thread t, int stackSize);
-
-void _idle(void *ign) { 
-  (void)ign;
-  while(1) yield();
-}
+static int run_thread(Context ctxt);
+static void setup_thread(Thread t, int stackSize);
 
 void init_threads() {
   threads.p = pool_init();
 }
 
 Thread create_thread(void (*func)(void*), void *arg, int stackSize) {
+  if (threads.p == NULL) {
+    init_threads();
+  }
+
   Thread t = (Thread)malloc(sizeof(thread_t));
  
   t->func = func;
   t->arg  = arg;
+  t->isDone = 0;
   
   setup_thread(t, stackSize); 
 
   return t;
 }
 
+void wait_threads(void){
+  Thread next; 
+  CurrentThread = (Thread)pool_first(threads.p);
+  while ( pool_count(threads.p) ) {
+    CurrentThread->ctxt = _swap_context(CurrentThread->ctxt);
+    
+    next = (Thread) pool_next(threads.p, &CurrentThread->node);
+    if (CurrentThread->isDone) {
+      pool_remove(threads.p, &CurrentThread->node);
+      free(CurrentThread->stack);
+      free(CurrentThread);
+    }
+    CurrentThread = next;
+  }
+  free(threads.p);
+  threads.p = NULL;
+}
 
-void setup_thread(Thread t, int stackSize) {
+void yield(void) {
+  CurrentThread->ctxt = _swap_context(CurrentThread->ctxt);    
+}
+
+
+static void setup_thread(Thread t, int stackSize) {
   void *stack = malloc(stackSize+0x80);
-  t->ctxt = _setup_context(stack+stackSize+0x40, run_thread);
+  t->ctxt = _setup_context(stack+stackSize+0x80, run_thread);
   t->stack = stack;
   t->ctxt = _swap_context(t->ctxt);
   
   pool_insert(threads.p, &t->node);
 }
 
-int run_thread(Context ctxt){ 
+static int run_thread(Context ctxt){ 
   ctxt =_swap_context(ctxt);
   CurrentThread->ctxt = ctxt;
   CurrentThread->func(CurrentThread->arg);
-  pool_remove(threads.p, &CurrentThread->node);
-  _swap_context(ctxt);
-}
-
-void wait_threads(void){
-  CurrentThread = (Thread)pool_first(threads.p);
-  while ( pool_count(threads.p) ) {
-    CurrentThread->ctxt = _swap_context(CurrentThread->ctxt);
-    CurrentThread = (Thread) pool_next(threads.p, &CurrentThread->node);
-  }
-}
-
-void yield(void) {
-  CurrentThread->ctxt = _swap_context(CurrentThread->ctxt);    
+  
+  CurrentThread->isDone = 1;
+  yield();
 }
 
 
